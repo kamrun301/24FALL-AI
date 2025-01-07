@@ -52,29 +52,31 @@ class ReflexAgent(Agent):
         return legalMoves[chosenIndex]
 
     def evaluationFunction(self, currentGameState, action):
-        """
-        Design a better evaluation function here.
+    """
+    A more advanced evaluation function for ReflexAgent.
+    """
+    successorGameState = currentGameState.generatePacmanSuccessor(action)
+    newPos = successorGameState.getPacmanPosition()
+    newFood = successorGameState.getFood()
+    newGhostStates = successorGameState.getGhostStates()
+    newScaredTimes = [ghostState.scaredTimer for ghostState in newGhostStates]
 
-        The evaluation function takes in the current and proposed successor
-        GameStates (pacman.py) and returns a number, where higher numbers are better.
+    # Calculate the Manhattan distance to the closest food pellet
+    foodDistances = [manhattanDistance(newPos, food) for food in newFood.asList()]
+    foodScore = -min(foodDistances) if foodDistances else 0
 
-        The code below extracts some useful information from the state, like the
-        remaining food (newFood) and Pacman position after moving (newPos).
-        newScaredTimes holds the number of moves that each ghost will remain
-        scared because of Pacman having eaten a power pellet.
+    # Calculate ghost proximity and scared state
+    ghostDistances = [manhattanDistance(newPos, ghost.getPosition()) for ghost in newGhostStates]
+    ghostPenalty = sum([-10 / d if d > 0 and t == 0 else 0 for d, t in zip(ghostDistances, newScaredTimes)])
 
-        Print out these variables to see what you're getting, then combine them
-        to create a masterful evaluation function.
-        """
-        # Useful information you can extract from a GameState (pacman.py)
-        successorGameState = currentGameState.generatePacmanSuccessor(action)
-        newPos = successorGameState.getPacmanPosition()
-        newFood = successorGameState.getFood()
-        newGhostStates = successorGameState.getGhostStates()
-        newScaredTimes = [ghostState.scaredTimer for ghostState in newGhostStates]
+    # Capsule prioritization
+    capsules = currentGameState.getCapsules()
+    capsuleDistances = [manhattanDistance(newPos, cap) for cap in capsules]
+    capsuleScore = -min(capsuleDistances) if capsules else 0
 
-        "*** YOUR CODE HERE ***"
-        return successorGameState.getScore()
+    return successorGameState.getScore() + foodScore + ghostPenalty + capsuleScore
+
+ 
 
 def scoreEvaluationFunction(currentGameState):
     """
@@ -194,42 +196,106 @@ class MinimaxAgent(MultiAgentSearchAgent):
         return best_action, best_score  # Return the best_action and best_score
     
 class AlphaBetaAgent(MultiAgentSearchAgent):
-    """
-      Your minimax agent with alpha-beta pruning (question 3)
-    """
-
     def getAction(self, gameState):
         """
-          Returns the minimax action using self.depth and self.evaluationFunction
+        Returns the minimax action using self.depth, self.evaluationFunction,
+        and alpha-beta pruning.
         """
-        "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        def alphaBetaPrune(curr_depth, agent_index, gameState, alpha, beta):
+            # Handle the end of agents' turns and increment depth
+            if agent_index >= gameState.getNumAgents():
+                agent_index = 0
+                curr_depth += 1
+
+            # Terminal conditions
+            if curr_depth == self.depth or gameState.isWin() or gameState.isLose():
+                return None, self.evaluationFunction(gameState)
+
+            best_action = None
+            if agent_index == 0:  # Pacman's turn (Maximizer)
+                value = float("-inf")
+                for action in gameState.getLegalActions(agent_index):
+                    next_state = gameState.generateSuccessor(agent_index, action)
+                    _, score = alphaBetaPrune(curr_depth, agent_index + 1, next_state, alpha, beta)
+                    if score > value:
+                        value = score
+                        best_action = action
+                    if value > beta:
+                        return best_action, value
+                    alpha = max(alpha, value)
+            else:  # Ghost's turn (Minimizer)
+                value = float("inf")
+                for action in gameState.getLegalActions(agent_index):
+                    next_state = gameState.generateSuccessor(agent_index, action)
+                    _, score = alphaBetaPrune(curr_depth, agent_index + 1, next_state, alpha, beta)
+                    if score < value:
+                        value = score
+                        best_action = action
+                    if value < alpha:
+                        return best_action, value
+                    beta = min(beta, value)
+            return best_action, value
+
+        # Start alpha-beta pruning from the root
+        alpha = float("-inf")
+        beta = float("inf")
+        action, _ = alphaBetaPrune(0, 0, gameState, alpha, beta)
+        return action
+
 
 class ExpectimaxAgent(MultiAgentSearchAgent):
-    """
-      Your expectimax agent (question 4)
-    """
-
     def getAction(self, gameState):
         """
-          Returns the expectimax action using self.depth and self.evaluationFunction
-
-          All ghosts should be modeled as choosing uniformly at random from their
-          legal moves.
+        Returns the expectimax action using self.depth and self.evaluationFunction.
         """
-        "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        def expectimax(curr_depth, agent_index, gameState):
+            if agent_index >= gameState.getNumAgents():
+                agent_index = 0
+                curr_depth += 1
+
+            if curr_depth == self.depth or gameState.isWin() or gameState.isLose():
+                return None, self.evaluationFunction(gameState)
+
+            best_action = None
+            if agent_index == 0:  # Pacman's turn (Maximizer)
+                value = float("-inf")
+                for action in gameState.getLegalActions(agent_index):
+                    next_state = gameState.generateSuccessor(agent_index, action)
+                    _, score = expectimax(curr_depth, agent_index + 1, next_state)
+                    if score > value:
+                        value = score
+                        best_action = action
+            else:  # Ghost's turn (Expectiminizer)
+                value = 0
+                actions = gameState.getLegalActions(agent_index)
+                for action in actions:
+                    next_state = gameState.generateSuccessor(agent_index, action)
+                    _, score = expectimax(curr_depth, agent_index + 1, next_state)
+                    value += score / len(actions)  # Expected value
+            return best_action, value
+
+        action, _ = expectimax(0, 0, gameState)
+        return action
+
 
 def betterEvaluationFunction(currentGameState):
     """
-      Your extreme ghost-hunting, pellet-nabbing, food-gobbling, unstoppable
-      evaluation function (question 5).
-
-      DESCRIPTION: <write something here so we know what you did>
+    A more advanced evaluation function for adversarial agents.
     """
-    "*** YOUR CODE HERE ***"
-    util.raiseNotDefined()
+    pacmanPos = currentGameState.getPacmanPosition()
+    food = currentGameState.getFood()
+    ghosts = currentGameState.getGhostStates()
+    capsules = currentGameState.getCapsules()
 
-# Abbreviation
-better = betterEvaluationFunction
+    foodDistances = [manhattanDistance(pacmanPos, foodPos) for foodPos in food.asList()]
+    ghostDistances = [manhattanDistance(pacmanPos, ghost.getPosition()) for ghost in ghosts]
+    scaredTimes = [ghost.scaredTimer for ghost in ghosts]
+
+    foodScore = -min(foodDistances) if foodDistances else 0
+    ghostPenalty = sum([-10 / d if d > 0 and scaredTime == 0 else 0 for d, scaredTime in zip(ghostDistances, scaredTimes)])
+    capsuleScore = -min([manhattanDistance(pacmanPos, cap) for cap in capsules]) if capsules else 0
+    return currentGameState.getScore() + foodScore + ghostPenalty + capsuleScore
+
+
+
 
